@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-class SpatialNetwork:
+class RandomGeometricGraph:
 
     """
     This class is used to create a spatial network.
@@ -32,8 +32,7 @@ class SpatialNetwork:
         if self.connection_type == "hard":
             self.connection_function = lambda r: r <= r_0
         else:
-            # change this to be other connection functions later
-            self.connection_function = lambda r: r <= r_0
+            raise(ValueError, "Connection type not recognised, perhaps not implemented yet")
         self.r_0 = r_0
         self.domain_type = domain_type
         self.domain_height = domain_height
@@ -48,7 +47,9 @@ class SpatialNetwork:
             for node in self.nodes:
                 if node[0]**2 + node[1]**2 > self.domain_radius**2:
                     raise(ValueError, "Node coordinates are outside the specified domain")
-
+        else:
+            raise(ValueError, "Domain type not recognised, perhaps not implemented yet")
+        
         self.edges = self.make_edges()    
         self.G = nx.Graph(self.edges)
 
@@ -79,4 +80,62 @@ class SpatialNetwork:
         # plot the edges
         for edge in self.edges:
             plt.plot([self.nodes[edge[0]][0], self.nodes[edge[1]][0]], [self.nodes[edge[0]][1], self.nodes[edge[1]][1]], 'k-')
+        
+        if self.domain_type == "circle":
+            # plot a circle of radius domain radius
+            theta = np.linspace(0, 2*np.pi, 100)
+            x = self.domain_radius*np.cos(theta)
+            y = self.domain_radius*np.sin(theta)
+            plt.plot(x, y, 'k-')
+            # make the axis square
+            plt.axis('square')
+        plt.show()
+
+    
+    def get_adjacency_matrix(self) -> np.ndarray:
+        """
+        Returns the adjacency matrix of the network
+        """
+
+        return nx.adjacency_matrix(self.G)
+    
+
+    def get_laplacian_matrix(self) -> np.ndarray:
+        """
+        Returns the Laplacian matrix of the network
+        """
+
+        return nx.laplacian_matrix(self.G)
+    
+
+    def get_degree_matrix(self) -> np.ndarray:
+        """
+        Returns the degree matrix of the network
+        """
+
+        return nx.degree_matrix(self.G)
+    
+
+    def eigenvalues(self, normalised=True) -> np.ndarray:
+        """
+        Returns the eigenvalues of the Laplacian matrix of the network
+        WARNING: This will convert the Laplacian to Dense format, which is not efficient for large networks
+        """
+
+        if normalised:
+            L = self.get_laplacian_matrix()
+            print(L)
+            tr = L.diagonal().sum()
+            return nx.laplacian_spectrum(self.G)/tr
+        else:
+            return nx.laplacian_spectrum(self.G)
+        
+
+    def plot_spectral_density(self, normalised=True) -> None:
+        """
+        Plots the spectral density of the network
+        """
+
+        plt.figure()
+        plt.hist(self.eigenvalues(normalised=normalised))
         plt.show()
