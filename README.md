@@ -1,2 +1,2 @@
-# PySpatialNetwork
- A python library for spatial network analysis.
+# PyRGG
+ A python library for Random Geometric Graph analysis.
