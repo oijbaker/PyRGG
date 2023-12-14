@@ -9,14 +9,15 @@ import matplotlib.pyplot as plt
 class RandomGeometricGraph:
 
     """
-    This class is used to create a spatial network.
+    This class is used to create a 2D random geometric graph.
     """
 
     def __init__(self, nodes, connection_type="hard", r_0=0.1,
                  domain_type="rectangle", domain_height=1, domain_width=1, 
-                 domain_radius=1, seed=None, rayleigh_beta=1, rayleigh_eta=2) -> None:
+                 domain_radius=1, seed=None, rayleigh_beta=1, rayleigh_eta=2,
+                 waxman_a=1, waxman_beta=0.5) -> None:
         """
-        Initializes a SpatialNetwork object.
+        Initializes a RandomGeometricGraph object.
 
         Parameters:
         nodes (list): A list of node coordinates to be included in the network.
@@ -29,6 +30,8 @@ class RandomGeometricGraph:
         seed (int, optional): The seed for the random number generator. Defaults to None.
         rayleigh_beta (float, optional): The beta parameter for the Rayleigh fading function. Defaults to 1.
         rayleigh_eta (float, optional): The eta parameter for the Rayleigh fading function. Defaults to 2.
+        waxman_a (float, optional): The a (scaling) parameter for the Waxman function. Defaults to 1.
+        waxman_beta (float, optional): The beta (decay) parameter for the Waxman function. Defaults to 0.5.
         """
 
         self.nodes = nodes
@@ -39,6 +42,10 @@ class RandomGeometricGraph:
             self.rayleigh_beta = rayleigh_beta
             self.rayleigh_eta = rayleigh_eta
             self.connection_function = lambda r: self.rayleigh(r)
+        elif self.connection_type == "waxman":
+            self.waxman_a = waxman_a
+            self.waxman_beta = waxman_beta
+            self.connection_function = lambda r: np.random.rand() <= self.waxman_a*np.exp(-r*self.waxman_beta)
         else:
             raise(ValueError, "Connection type not recognised, perhaps not implemented yet")
         self.r_0 = r_0
@@ -82,7 +89,10 @@ class RandomGeometricGraph:
         edges = []
         for i in range(len(self.nodes)):
             for j in range(i, len(self.nodes)):
-                edge_ij = self.connection_function(np.linalg.norm(np.array(self.nodes[i]) - np.array(self.nodes[j])))
+                dist = np.linalg.norm(np.array(self.nodes[i]) - np.array(self.nodes[j]))
+                if dist == 0:
+                    continue
+                edge_ij = self.connection_function(dist)
                 if edge_ij:
                     edges.append((i, j))
 
@@ -97,7 +107,7 @@ class RandomGeometricGraph:
 
         plt.figure()
         plt.scatter(*zip(*self.nodes), s=s)
-
+        
         # plot the edges
         for edge in self.edges:
             plt.plot([self.nodes[edge[0]][0], self.nodes[edge[1]][0]], 
@@ -203,3 +213,159 @@ class RandomGeometricGraph:
 
         
         return np.log(np.sum(eigenvalues**alpha))*1/(1-alpha)
+    
+
+class MarkovRandomGeometricGraph:
+
+    def __init__(self, connection_type="hard", r_0=0.1, dimensions=2, n=10, 
+                 domain_height=1, domain_width=1, domain_radius=1, 
+                 seed=None, rayleigh_beta=1, rayleigh_eta=2,
+                 waxman_a=1, waxman_beta=0.5):
+        """
+        Initializes a MarkovRandomGeometricGraph object.
+        """
+
+        self.connection_type = connection_type
+        if self.connection_type == "hard":
+            self.connection_function = lambda r: r <= r_0
+        elif self.connection_type == "rayleigh":
+            self.rayleigh_beta = rayleigh_beta
+            self.rayleigh_eta = rayleigh_eta
+            self.connection_function = lambda r: self.rayleigh(r)
+        elif self.connection_type == "waxman":
+            self.waxman_a = waxman_a
+            self.waxman_beta = waxman_beta
+            self.connection_function = lambda r: np.random.rand() <= self.waxman_a*np.exp(-r*self.waxman_beta)
+        else:
+            raise(ValueError, "Connection type not recognised, perhaps not implemented yet")
+        
+        self.r_0 = r_0
+        self.domain_height = domain_height
+        self.domain_width = domain_width
+        self.domain_radius = domain_radius
+        self.dimensions = dimensions
+
+        if seed is not None:
+            np.random.seed(seed)
+
+        # generate a random point in the d-dimensional sphere
+        r = np.random.normal(size=self.dimensions)
+        r = r/np.linalg.norm(r)
+
+        self.nodes = [r]
+        self.edges = []
+        self.G = nx.Graph(self.edges)
+
+        for i in range(n-1):
+            self.add_node()
+
+
+    def geodesic(self, r) -> float:
+        """
+        Returns the geodesic distance
+        """
+
+        return np.arccos(r)
+
+
+    def rayleigh(self, r) -> float:
+        """
+        Returns a Rayleigh fading probability
+        """
+
+        return np.random.rand() <= np.exp(-self.rayleigh_beta*(r**self.rayleigh_eta))
+
+
+    def add_node(self):
+        """
+        Adds a new node to the network
+        """
+
+        X_0 = self.nodes[-1]
+        
+        # generate a random point in the d-dimensional sphere
+        r = np.random.normal(size=self.dimensions)
+        r = r/np.linalg.norm(r)
+
+        u = r-(np.dot(r, X_0))*X_0
+        u = u/np.linalg.norm(u)
+
+        # now u is orthogonal to X_0
+
+        # generate a random distance from the origin
+        d = np.random.uniform(0, 1)
+
+        X_1 = d*X_0 + np.sqrt(1-d**2)*u
+
+        self.nodes.append(X_1)
+        for i in range(len(self.nodes)-1):
+            dist = np.linalg.norm(np.array(self.nodes[i]) - np.array(self.nodes[-1]))
+            if self.connection_function(dist):
+                self.edges.append((i, len(self.nodes)-1))
+
+        return X_1
+    
+
+    def plot(self, s=25, linewidth=0.75, wireframe=False) -> None:
+        """
+        Plot the network using matplotlib
+        s (int, optional): The size of the nodes. Defaults to 10.
+        linewidth (float, optional): The width of the edges. Defaults to 0.75.
+        """
+
+        if self.dimensions == 2:
+
+            plt.figure()
+            plt.scatter(*zip(*self.nodes), s=s)
+            
+
+            if wireframe:
+                # plot a circle of radius domain radius
+                theta = np.linspace(0, 2*np.pi, 100)
+                x = self.domain_radius*np.cos(theta)
+                y = self.domain_radius*np.sin(theta)
+                plt.plot(x, y, '--')
+
+            # plot the edges using node locations
+            for node in self.nodes:
+                for edge in self.edges:
+                    plt.plot([self.nodes[edge[0]][0], self.nodes[edge[1]][0]], 
+                            [self.nodes[edge[0]][1], self.nodes[edge[1]][1]], 
+                            'k-', linewidth=linewidth)
+            
+            # make the axis square
+            plt.axis('square')
+            plt.show()
+
+
+        if self.dimensions == 3:
+
+            # 3D plot
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+            ax.scatter(*zip(*self.nodes), s=s)
+
+            if wireframe:
+
+                # Create a unit sphere
+                phi, theta = np.mgrid[0.0:np.pi:100j, 0.0:2.0 * np.pi:100j]
+                x = np.sin(phi) * np.cos(theta)
+                y = np.sin(phi) * np.sin(theta)
+                z = np.cos(phi)
+
+                # Plot the wireframe sphere
+                ax.plot_wireframe(x, y, z, color='b', rstride=10, cstride=10, linewidth=linewidth, alpha=0.2)
+
+            # plot the edges using node locations
+            for node in self.nodes:
+                for edge in self.edges:
+                    ax.plot([self.nodes[edge[0]][0], self.nodes[edge[1]][0]], 
+                            [self.nodes[edge[0]][1], self.nodes[edge[1]][1]], 
+                            [self.nodes[edge[0]][2], self.nodes[edge[1]][2]], 
+                            'k-', linewidth=linewidth)
+                    
+            # make the axes square
+            ax.set_aspect("equal")
+                    
+            plt.show()
+
